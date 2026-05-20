@@ -14,7 +14,7 @@ timezone:
 # jekyll-seo-tag settings › https://github.com/jekyll/jekyll-seo-tag/blob/master/docs/usage.md
 # ↓ --------------------------
 
-title: gzzcoo # the main title
+title: Top0n3 # the main title
 
 tagline: DllImport("kernel32.dll")  # it will display as the subtitle
 
@@ -23,25 +23,24 @@ description: >- # used by seo meta and the atom feed
 
 # Fill in the protocol & hostname for your site.
 # E.g. 'https://username.github.io', note that it does not end with a '/'.
-url: "https://gzzcoo.github.io"
+url: "https://github.com/Top0n3"
 
 github:
-  username: gzzcoo # change to your GitHub username
+  username: Top0n3 # change to your GitHub username
 
 twitter:
-  username: gzzcoo # change to your Twitter username
+  username: Top0n3 # change to your Twitter username
 
 social:
   # Change to your full name.
   # It will be displayed as the default author of the posts and the copyright owner in the Footer
-  name: gzzcoo
+  name: Top0n3
   #email: jrodriguez@gzzcoo.com # change to your email address
   links:
     # The first element serves as the copyright owner's link
-    - https://twitter.com/gzzcoo # change to your Twitter homepage
-    - https://github.com/gzzcoo # change to your GitHub homepage
+    - https://twitter.com/
+    - https://github.com/Top0n3
     # Uncomment below to add more social links
-    # - https://www.facebook.com/username
     # - https://www.linkedin.com/in/username
 
 # Site Verification Settings
@@ -98,7 +97,7 @@ theme_mode: # [light | dark]
 cdn:
 
 # the avatar on sidebar, support local or CORS resources
-avatar: https://avatars.githubusercontent.com/u/84739780?v=4
+avatar: #https://avatars.githubusercontent.com/u/84739780?v=4
 
 # The URL of the site-wide social preview image used in SEO `og:image` meta tag.
 # It can be overridden by a customized `page.image` in front matter.
