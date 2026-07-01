@@ -1,0 +1,166 @@
+---
+title: Kerberos protocol deep explanation
+date: 2025-11-09 10:00:00 +0000
+categories:
+- Penetration Testing
+- Guides
+tags:
+- PenetrationTesting
+- Guides
+---
+
+### Kerberos Protocol deep explanation for beginners <br> 
+Kerberos protocol is widely used to implement authentication especially on Active Directory (AD) environment.
+To succeed as internal penetration tester, it is crucial to understand how kerberos protocol works and how attackers can abuse it to compromise the internal AD environment.<br>
+The purpose of this article is to explain how Kerberos protocol works. So in the next article, we can focus attacking kerberos authentication in AD environment.
+Not that i'm not an expert in this field so this article is just an introduction to kerberos protocol and is written for beginners. feel free to reach me if you found mistake
+
+
+[I. Introduction to Kerberos protocol](#introduction)
+
+[II. Principals components to know](#components)<br><br>
+
+[II. Kerberos AS-REQ Request / AS-REP](#as)<br><br>
+[III. Kerberos TGS-REQ Request / TGS-REP](#tgs)<br><br>
+[IV. Kerberos AP-REQ Request AP-REP ](#ap)<br><br>
+[Conclusion](#conclusion)<br><br>
+
+
+
+# I. Introduction to Kerberos protocol {#introduction}
+
+In Active directory environment,  NTLM and kerberos are two protocol used to implement authentication system.
+Nowdays, kerberos is the most used  because it is more secure than NTLM protocol. 
+Kerberos is a protocol that allows users to authenticate on the network and access services
+once authenticated. Kerberos uses port 88 by default and has been the default
+authentication protocol for domain accounts since Windows 2000. When a user logs into
+their PC, Kerberos is used to authenticate them. It is used whenever a user wants to access
+a service on the network. Thanks to Kerberos, a user doesn't need to type their password in
+constantly, and the server won't need to know every user's password. This is an example of
+centralized authentication.
+Kerberos is a stateless authentication protocol based on tickets. It effectively decouples a
+user's credentials from their requests to consumable resources, ensuring their password is
+not transmitted over the network.  
+Typically, we can use kerberos authentication on active directory environment, on web site or others things
+
+
+# II.  Principals components to know {#components}
+To understand kerberos auth workflow, let enumerate essential component that interact in this workflow
+- `Key Distributor Center` (`KDC`): 
+It is  the main component of kerberos protocol and  is implemented on the domain controler.
+The KDC is  the central element of kerberos authentication. all authentication (TGT and TGS generation ) happen onside of KDC. It have all users, computers, services account informations(names, password) on it database. 
+
+- `User account`:
+In active directory environment, user  account is an account used to identify an user on the company who has AD access permission. Think of it like an account that you create on a webSite.
+
+- `Service Account`:
+When you authenticate on an active directory environment, the main purpose is to accesse to one or multiple service on the envirnment. Typically the service can be  SMB service,FTP service,...
+Each of those services has it how account.  Think about your apache2 web server which run under `www-data` user.
+So each of their service has a service account.
+
+
+- `Ticket`:
+On AD environment, `ticket` is a piece of  informations (user information, name, role, perms,..) encrypted with `KDC` secret key or `service` secret key.
+It is used to prove user identity or to ask service access.
+<br>
+- `Ticket Granting Ticke` (TGT): TGT is a ticket that is used on AD environment to prove user identity.
+Typically, user login to KDC and get TGT ticket. After that , if user want to access any service or ressources on the AD environment, it must send this TGT ticket with encrypted session key to KDC. At that moment, KDC will forge  TGS and give it to user. TGS is the final ticket that is used to access service 
+
+
+
+- `Ticket Granting Service`:
+As say previously, TGS is a ticket that we can use to access to one sevice.
+<br> <br>
+Let now see how active directory authentificaiton work and how services access work.
+
+
+
+
+<br><br>
+# III. Kerberos AS-REQ Request / AS-REP {#as}
+authentication on AD consiste of asking KDC a TGT ticket. TGT ticket can be considere as an identity card that user use to prove their identity.
+Considere it like your work office card. With that ticket, user don't need to repeatly send it password each time he want to authenticate
+
+To do so: 
+1.  User send a request  to the KDC to ask TGT. This request is call `AS-REQ request` .<br>
+The request contain  the username and an `authenticator` . The authenticator is just an encrypted timestamp value of user computer with user account secret/password .
+Raison why `when  you want to authenticate with AD , you must have the same timestamp with the domain controller.`
+2. KDC use the provide username and retrieve the password of  that user on it database. <br> 
+It try to decrypt  authenticator  value of the request with the retrieved password. 
+If the decryption work,  user credential is correct and at that time, KDC can generate TGT ticket for the user. <br>
+If all work perfect, KDC return the generated TGT to the client.
+The response to this request contain TGT and session key. The session key is temporal token to identify the session and is encrypted with user password
+
+This authentication process is called `Kerberos Pre-authentication`. Note that adminstrator can disable  this authentication  for specific user account of and AD.
+In AD pentest, if you found user account with pre-authentication disable, you can ask TGT ticket for that user and impersonate that user. 
+
+![AS-REQ and AS-REP](/assets/img/writeups/misc/as-req.png)
+
+## Pratical example, ask TGT by using username and password
+Let use voleur, hackthebox machine to  make little pratice
+### 1. sync time
+```sh
+sudo rdate  -n 10.10.11.76                                                                
+Sat Nov  8 19:18:50 WAT 2025
+```
+### 2. Get  ryan.naylor TGT
+```sh
+impacket-getTGT  voleur.htb/ryan.naylor:HollowOct31Nyt -dc-ip 10.10.11.76  
+Impacket v0.10.0 - Copyright 2022 SecureAuth Corporation
+
+[*] Saving ticket in ryan.naylor.ccache
+
+```
+So after the command, we got  ryan.naylor TGT ticket in  ryan.naylor.ccache file. We can use it for futural action like ask TGS for service access 
+![AS-REQ and AS-REP](/assets/img/writeups/misc/asr-req-tgt.png)
+
+
+
+<br><br><br>
+# IV. Kerberos TGS-REQ Request / TGS-REP Response {#tgs}
+ After  user got TGT ticket, if he want to access  one service like smb service, it must ask TGS for that service. <br>
+To do this, user send three things to KDC: <br>
+1. The name of the service they wish to access (SERVICE/HOST, which is the Service Principal Name (SPN)
+2. The TGT they previously received, containing their information and a copy of the session key
+3. An authenticator, which will be encrypted using the session key at this time
+
+This request is call `TGS-REQ Request`. <br>
+ When KDC receive TGS-REQ, it decrypt the  containning TGT and retrieve user information and the session key.
+ It use that session key to decrypt the value of authenticator.
+
+ Note that in pre-auth session, KDC also store a duplicate session token key on it side.
+ At that time, KDC can generate TGS for that user ( only if user have permission to get TGS for the targeted service)
+ The generated TGS ticket is encrypted with the service secret key(password).
+ The response from KDC contain the generated TGS and an encrypted copy session key
+ TGS contain three things:
+ 1. Service name
+ 2. User information
+ 3. Session key
+ This response is call `TGS-REP Response` 
+
+<br>
+# V. Kerberos AP-REQ Request AP-REP {#ap}
+Now that user got TGS for specific service, he can send now the received TGS and an authenticator to the service.
+Authenticator on this step is same as previous expecially it is encrypted with session key received from  TGS-REP not AS-REP.
+This request is call `AP-REQ Request`
+When service receive, it decrypt the containing TGS ( TGS is encrypted with service secret, so service can decrypt it), extract session key and read user information from the decrypted TGS.<br>
+Service try to decrypt authenticator value with the extracted session key. It it work, user has correct TGS and correct session key. 
+According to user permission, he can be granted access to service or not. <br>
+Service send user an authenticator which is en encrypted timestamp with the extracted session key.
+The response from Service is called `AP-REP response`
+
+
+<br>
+# Conclusion
+
+As  you can see, kerberos authentication system is based on  encryption. Many flaws like weak secret key or other misconfiguration can rise on this system and as H4ck3rs, we can exploit those flaw or miscofiguration to compromise user account. <br>
+It is very crytial to understand each of kerberos workflow step. That will help us to understand how to exploit this authentication.
+
+In the next article, we must learn how to attack and exploit  vulnerability on this kerberos. <br>
+
+Hope someone learnt  little thing by reading this article.
+<br>Thank you for reading and fell free to reach my if you found mistake  or want more explaination
+
+
+<br>
+HAPPY HACKING GEY
