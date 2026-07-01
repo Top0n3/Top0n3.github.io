@@ -16,7 +16,7 @@ timezone:
 
 title: Top0n3 # the main title
 
-tagline: DllImport("kernel32.dll")  # it will display as the subtitle
+tagline: H4ck Th3 Pl4net  # it will display as the subtitle
 
 description: >- # used by seo meta and the atom feed
   Red Teaming
