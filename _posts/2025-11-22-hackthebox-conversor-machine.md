@@ -126,8 +126,8 @@ The source code reveal server root directory which is */var/www/conversor.htb/*
 </xsl:stylesheet>
 ```
 
-![main page](/assets/hackthebox/conversor_upload1.png)
-![main page](/assets/hackthebox/conversor_evil_txt.png)
+![main page](/assets/img/writeups/htb/conversor_code_exe1.png)
+![main page](/assets/img/writeups/htb/conversor_about_page.png)
 
 
 So We can write file on server, but what can we do with that !!  ?

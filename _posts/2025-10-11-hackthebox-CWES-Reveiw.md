@@ -24,7 +24,7 @@ In this article, i will make a review of this exam and give some tricks and tips
 
 [What is CWES](#introduction)
 
-[Stastical of my trainning / Exam taking](#stastical)
+[Stastical of my trainning / Exam taking](#statical)
 
 [Tips & Tricks For CWES Prepare](#prepare_tips)
 

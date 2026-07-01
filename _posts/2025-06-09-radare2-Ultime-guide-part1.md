@@ -30,12 +30,8 @@ Hope you enjoy this serie
 
 [Radare2 INSTALLATION](#installation)
 [Radare2 framework toolchain](#tool-chain)
-
-[Radare2 framework  core overview](#core)
-
 [Binary open modes](#open-mode)
-[Interfaces ](#interfaces)
-[Radare2 commands overview](#commands-overview)
+[Interfaces](#interfaces)
 
 
 

