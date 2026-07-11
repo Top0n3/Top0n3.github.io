@@ -27,7 +27,7 @@ I'm a **cybersecurity specialist** focused on offensive security, network penetr
 
 
 **Bug bounty Hunter At HackerOne**
-<br> With one valid bug reported on stripe's public bug bounty program
+<br> With one valid bug reported 
  
 ---
 
