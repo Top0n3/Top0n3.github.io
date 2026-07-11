@@ -8,7 +8,7 @@ order: 4
 
 ## Who I Am
 
-**Offensive Security Researcher | Penetration Tester ( Web, AD)  | CTF Competitor | Aspiring AI Red Teaming**
+Offensive Security Researcher | Penetration Tester ( Web, AD)  | CTF Competitor | Aspiring AI Red Teaming
 
 I'm a **cybersecurity specialist** focused on offensive security, network penetration testing, and vulnerability research. My work spans from Web penetration testing,  enterprise network assessments, Active directory penetration testing  to Binary exploitation/exploit development
 
