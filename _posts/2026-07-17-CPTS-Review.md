@@ -3,7 +3,6 @@ title: "Hack The Box CPTS Review: Path, Exam, Preparation, and Personal Verdict"
 date: 2026-07-17 10:00:00 +0000
 categories: [Certification, Hack The Box]
 tags: [Pentesting, CPTS, Exam, Hack The Box, Review]
-image: /assets/img/writeups/htb/CPTS-image.png
 description: "A practical, no-spoiler review of the Hack The Box CPTS path, exam, preparation strategy, and value."
 toc: true
 ---
