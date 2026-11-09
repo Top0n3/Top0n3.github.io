@@ -1,5 +1,5 @@
 ---
-title: Kerberos attacks Part 0x00 Kerberos Authentification, tickets generation flow 
+title: Kerberos attacks Part 0x00 
 date: 2025-11-09 10:00:00 +0000
 categories:
 - Penetration Testing
@@ -9,7 +9,8 @@ tags:
 - Guides
 ---
 
-### Kerberos Protocol deep explanation for beginners <br> 
+### KERBEROS aUTHENTIFICATION, TICKETS GENERATION FLOW <BR> 
+
 Kerberos protocol is widely used to implement authentication especially on Active Directory (AD) environment.
 To succeed as internal penetration tester, it is crucial to understand how kerberos protocol works and how attackers can abuse it to compromise the internal AD environment.<br>
 The purpose of this article is to explain how Kerberos protocol works. So in the next article, we can focus attacking kerberos authentication in AD environment.
