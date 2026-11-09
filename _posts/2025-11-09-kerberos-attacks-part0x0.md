@@ -1,5 +1,5 @@
 ---
-title: Kerberos protocol deep explanation
+title: Kerberos attack: Part 0x00 
 date: 2025-11-09 10:00:00 +0000
 categories:
 - Penetration Testing
@@ -83,16 +83,17 @@ Considere it like your work office card. With that ticket, user don't need to re
 
 To do so: 
 1.  User send a request  to the KDC to ask TGT. This request is call `AS-REQ request` .<br>
-The request contain  the username and an `authenticator` . The authenticator is just an encrypted timestamp value of user computer with user account secret/password .
+The request contain  the username and an `authenticator` . The authenticator is just an encrypted value of timestamp value of user computer with cryptographic key derived from  secret/password. Depending of KDC configuration, the cryptographic key derived can be user password `NTLM hash` or  AES key derived if AES is used which is the case in moderne environment. KDC store user `NTLM hash` and `AES-128 and AES-256 derived keys` in user attributes fo make this process possible.
+
 Raison why `when  you want to authenticate with AD , you must have the same timestamp with the domain controller.`
-2. KDC use the provide username and retrieve the password of  that user on it database. <br> 
-It try to decrypt  authenticator  value of the request with the retrieved password. 
+2. KDC use the provide username and retrieve the cryptographic  key derived of  user password/secret  on it database (`NTDS.DIT`). <br> 
+It try to decrypt  authenticator  value of the request with the retrieved cryptographic key. 
 If the decryption work,  user credential is correct and at that time, KDC can generate TGT ticket for the user. <br>
 If all work perfect, KDC return the generated TGT to the client.
-The response to this request contain TGT and session key. The session key is temporal token to identify the session and is encrypted with user password
+The response to this request contain TGT and session key. The session key is temporal token to identify the session and is encrypted with cryptographic key derived from user password. <br> The TGT ticket contain Privileges Attribute Certificate (PAC) which is a set of attributes to identify user, its permissions, its groups membership and so one
 
 This authentication process is called `Kerberos Pre-authentication`. Note that adminstrator can disable  this authentication  for specific user account of and AD.
-In AD pentest, if you found user account with pre-authentication disable, you can ask TGT ticket for that user and impersonate that user. 
+In AD pentest, if you found user account with pre-authentication disable, you can ask TGT ticket without having it valide password. 
 
 ![AS-REQ and AS-REP](/assets/img/writeups/misc/as-req.png)
 
@@ -120,17 +121,17 @@ So after the command, we got  ryan.naylor TGT ticket in  ryan.naylor.ccache file
 # IV. Kerberos TGS-REQ Request / TGS-REP Response {#tgs}
  After  user got TGT ticket, if he want to access  one service like smb service, it must ask TGS for that service. <br>
 To do this, user send three things to KDC: <br>
-1. The name of the service they wish to access (SERVICE/HOST, which is the Service Principal Name (SPN)
-2. The TGT they previously received, containing their information and a copy of the session key
+1. The name of the service they wish to access (SERVICEClass/HOST:PORT, which is the   Service Principal Name (SPN)
+2. The TGT  user  previously received, containing his  informations and a copy of the session key
 3. An authenticator, which will be encrypted using the session key at this time
 
 This request is call `TGS-REQ Request`. <br>
- When KDC receive TGS-REQ, it decrypt the  containning TGT and retrieve user information and the session key.
+ When KDC receive TGS-REQ, it decrypt the  containning TGT and retrieve user information and the session key. `Ticket Granting Services` can do that because it it a component of  KDC
  It use that session key to decrypt the value of authenticator.
 
  Note that in pre-auth session, KDC also store a duplicate session token key on it side.
- At that time, KDC can generate TGS for that user ( only if user have permission to get TGS for the targeted service)
- The generated TGS ticket is encrypted with the service secret key(password).
+ At that time, KDC can generate TGS for that user 
+ The generated TGS ticket is encrypted with the service cryptographic derived  key(NTLM Hash).
  The response from KDC contain the generated TGS and an encrypted copy session key
  TGS contain three things:
  1. Service name
@@ -140,7 +141,7 @@ This request is call `TGS-REQ Request`. <br>
 
 <br>
 # V. Kerberos AP-REQ Request AP-REP {#ap}
-Now that user got TGS for specific service, he can send now the received TGS and an authenticator to the service.
+Now that user got TGS for specific service, he can send  the received TGS and an authenticator to the service.
 Authenticator on this step is same as previous expecially it is encrypted with session key received from  TGS-REP not AS-REP.
 This request is call `AP-REQ Request`
 When service receive, it decrypt the containing TGS ( TGS is encrypted with service secret, so service can decrypt it), extract session key and read user information from the decrypted TGS.<br>
@@ -156,7 +157,7 @@ The response from Service is called `AP-REP response`
 As  you can see, kerberos authentication system is based on  encryption. Many flaws like weak secret key or other misconfiguration can rise on this system and as H4ck3rs, we can exploit those flaw or miscofiguration to compromise user account. <br>
 It is very crytial to understand each of kerberos workflow step. That will help us to understand how to exploit this authentication.
 
-In the next article, we must learn how to attack and exploit  vulnerability on this kerberos. <br>
+In the next article, we must learn how to attack and exploit  vulnerability on this kerberos ticket generation flow. <br>
 
 Hope someone learnt  little thing by reading this article.
 <br>Thank you for reading and fell free to reach my if you found mistake  or want more explaination
