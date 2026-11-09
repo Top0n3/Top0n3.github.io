@@ -1,5 +1,5 @@
 ---
-title: Kerberos attacks Part 0x01 ASREPROASTING, KERBEROASTING, TARGET KERBEROSTING Attacks 
+title: Kerberos attacks Part 0x01 
 date: 2026-11-09 10:00:00 +0000
 categories:
 - Penetration Testing
