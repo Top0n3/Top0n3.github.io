@@ -1,5 +1,5 @@
 ---
-title: Kerberos attacks Part 0x00: Kerberos Authentification, tickets generation flow 
+title: Kerberos attacks Part 0x00 Kerberos Authentification, tickets generation flow 
 date: 2025-11-09 10:00:00 +0000
 categories:
 - Penetration Testing
