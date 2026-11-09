@@ -9,13 +9,8 @@ tags:
 - Guides
 ---
 
-### Kerberos Protocol deep explanation for beginners <br> 
-Kerberos protocol is widely used to implement authentication especially on Active Directory (AD) environment.
-To succeed as internal penetration tester, it is crucial to understand how kerberos protocol works and how attackers can abuse it to compromise the internal AD environment.<br>
-The purpose of this article is to explain how Kerberos protocol works. So in the next article, we can focus attacking kerberos authentication in AD environment.
-Not that i'm not an expert in this field so this article is just an introduction to kerberos protocol and is written for beginners. feel free to reach me if you found mistake
-
-
+###  ASREPROASTING, KERBEROASTING, TARGET KERBEROSTING Attacks
+--- TODO ---
 [I. Introduction to Kerberos protocol](#introduction)
 
 [II. Principals components to know](#components)<br><br>
