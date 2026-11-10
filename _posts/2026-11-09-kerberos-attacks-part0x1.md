@@ -10,7 +10,7 @@ tags:
 ---
 
 ###  ASREPROASTING, KERBEROASTING, TARGET KERBEROSTING Attacks
---- TODO ---
+--- do ---
 [I. Introduction to Kerberos protocol](#introduction)
 
 [II. Principals components to know](#components)<br><br>
