@@ -18,7 +18,7 @@ In [Part 0x00](/posts/kerberos-attacks-part0x0/), we explored how the Kerberos a
 2. **`TGS-REQ` / `TGS-REP`**: Presenting the TGT to the Ticket Granting Service (TGS) to obtain a service ticket (**TGS**) for a specific Service Principal Name (**SPN**).
 3. **`AP-REQ` / `AP-REP`**: Presenting the service ticket directly to the target application server to authenticate.
 
-Understanding how tickets are encrypted and exchanged is the key to understanding why Kerberos can be abused. Because Kerberos relies on symmetric cryptography—encrypting parts of responses and tickets using keys derived from user and service account passwords—any flaw that lets us obtain ciphertext encrypted with a user's key allows us to perform **offline password cracking** without ever locking out accounts.
+Understanding how tickets are encrypted and exchanged is the key to understanding why Kerberos can be abused. Because Kerberos relies on symmetric cryptography encrypting parts of responses and tickets using keys derived from user and service account passwords any flaw that lets us obtain ciphertext encrypted with a user's key allows us to perform **offline password cracking** without ever locking out accounts.
 
 In this second article (**Part 0x01**), we will dive deep into the offensive side of ticket requests: **AS-REP Roasting**, **Kerberoasting**, **Kerberoasting without Credentials**, and **ACL Abuse (Targeted AS-REP Roasting & Targeted Kerberoasting)**.
 
@@ -42,10 +42,11 @@ Before launching any tool, let's recall **what is encrypted with whose key** dur
 | Kerberos Message | Encrypted Component | Key Used for Encryption | Attack Surface |
 | :--- | :--- | :--- | :--- |
 | **`AS-REQ`** | Authenticator (`PA-ENC-TIMESTAMP`) | **User's secret key** (NTLM hash / AES key) | Requires knowing user's password *unless* Pre-Authentication is disabled. |
-| **`AS-REP`** | Ticket-Granting Ticket (TGT) | **`krbtgt` secret key** | Cannot be decrypted by user (unless `krbtgt` is compromised). |
-| **`AS-REP`** | Encrypted Data (`enc-part`: session key, metadata) | **User's secret key** (NTLM hash / AES key) | **AS-REP Roasting**: If we receive an `AS-REP` without knowing the password, we can crack `enc-part` offline! |
-| **`TGS-REQ`** | Authenticator + TGT | **Logon Session Key** + **`krbtgt` key** | Requires a valid TGT (typically any domain user account). |
-| **`TGS-REP`** | Service Ticket (`ticket.enc-part`) | **Service Account's secret key** (NTLM hash / AES key) | **Kerberoasting**: Any authenticated user can request a TGS for any SPN and crack the service ticket offline! |
+| **`AS-REP`** | Ticket (`ticket.enc-part`: normally TGT) | **`krbtgt` secret key** *(or **Service Account's key** if `sname` is modified!)* | Cannot be decrypted when `sname = krbtgt`, **unless** we replace `sname` with a target SPN (**Unauthenticated Kerberoasting**). |
+| **`AS-REP`** | Outer Encrypted Data (`enc-part`: logon session key, metadata) | **Requesting User's secret key** (NTLM hash / AES key) | **AS-REP Roasting**: If Pre-Auth is disabled, we receive `AS-REP` without a password and crack `enc-part` offline! |
+| **`TGS-REQ`** | Authenticator + TGT | **Logon Session Key** + **`krbtgt` key** | Requires a valid TGT (typically any authenticated domain user). |
+| **`TGS-REP`** | Outer Encrypted Data (`enc-part`: service session key) | **Logon Session Key** (from TGT) | Decrypted by the client to extract the session key needed for `AP-REQ`. |
+| **`TGS-REP`** | Service Ticket (`ticket.enc-part`) | **Service Account's secret key** (NTLM hash / AES key) | **Kerberoasting**: Any authenticated user can request a TGS for any SPN and crack `ticket.enc-part` offline! |
 
 Whenever the KDC sends us data encrypted with a **human-chosen password** (either in the `AS-REP` `enc-part` or the `TGS-REP` `ticket`), we can extract that encrypted blob and brute-force the password offline using `hashcat` or `john`.
 
@@ -81,22 +82,27 @@ Attacker  <--[ AS-REP (TGT + enc-part encrypted with User X's key)  ]----  KDC
 ```
 
 When `UF_DONT_REQUIRE_PREAUTH` is enabled on an account:
-1. Anyone can send an `AS-REQ` for that username **without providing an encrypted timestamp**.
+1. Anyone can send an `AS-REQ` for that username **without providing an encrypted timestamp** (`PA-ENC-TIMESTAMP`).
 2. The KDC skips validation and immediately responds with a valid `AS-REP`.
-3. In our `AS-REQ`, we can explicitly request **RC4-HMAC (`etype 23` / `0x17`)** encryption so that the returned `enc-part` is encrypted using the user's NTLM hash (which is much faster to crack than AES-256).
-4. We extract the `enc-part` from the `AS-REP` and crack it offline.
+3. In our `AS-REQ` (`req-body.etype`), we explicitly request **RC4-HMAC (`etype 23` / `0x17`)** encryption so that the returned `enc-part` is encrypted using the user's NTLM hash (which is much faster to crack than AES-256).
+4. We extract the outer `enc-part` from the `AS-REP` and crack it offline.
+
+> **Important Edge Cases When AS-REP Roasting Fails:**
+> - **Disabled Accounts (`UF_ACCOUNTDISABLE` / `0x2`):** Even if `UF_DONT_REQUIRE_PREAUTH` is set, the KDC will reply with `KDC_ERR_CLIENT_REVOKED` if the account is disabled.
+> - **`Protected Users` Group Membership:** Accounts in the `Protected Users` security group **always** require Kerberos Pre-Authentication and **cannot** use RC4 encryption, regardless of their `userAccountControl` flags.
+> - **AES-Only Enforcement (`KDC_ERR_ETYPE_NOSUPP`):** If the target account has `msDS-SupportedEncryptionTypes` configured to only allow AES, or if RC4 is disabled via GPO on the KDC, requesting only `etype 23` will fail with `KDC_ERR_ETYPE_NOSUPP`. In that case, the client must request AES (`etype 17` or `18`).
 
 ---
 
 ## 2. Enumerating Vulnerable Accounts
 
-If we already have valid domain credentials (or an LDAP bind), we can query Active Directory for any user object whose `userAccountControl` attribute has the `4194304` (`0x400000`) bit set:
+If we already have valid domain credentials (or an LDAP bind), we can query Active Directory for enabled user objects whose `userAccountControl` attribute has the `4194304` (`0x400000`) bit set:
 
 - **Raw LDAP Filter:**
   ```ldap
-  (&(samAccountType=805306368)(userAccountControl:1.2.840.113556.1.4.803:=4194304))
+  (&(samAccountType=805306368)(userAccountControl:1.2.840.113556.1.4.803:=4194304)(!(userAccountControl:1.2.840.113556.1.4.803:=2)))
   ```
-  *(Note: `1.2.840.113556.1.4.803` is the LDAP bitwise `AND` matching rule OID, and `samAccountType=805306368` filters for normal user objects).*
+  *(Note: `1.2.840.113556.1.4.803` is the LDAP bitwise `AND` matching rule OID, `samAccountType=805306368` filters for normal user objects, and `!(userAccountControl...:=2)` excludes disabled accounts).*
 
 - **Using PowerView (Windows):**
   ```powershell
@@ -105,12 +111,12 @@ If we already have valid domain credentials (or an LDAP bind), we can query Acti
 
 - **Using ActiveDirectory Module (PowerShell):**
   ```powershell
-  Get-ADUser -Filter {DoesNotRequirePreAuth -eq $True} -Properties DoesNotRequirePreAuth
+  Get-ADUser -Filter {DoesNotRequirePreAuth -eq $True -and Enabled -eq $True} -Properties DoesNotRequirePreAuth
   ```
 
 - **Using BloodHound Cypher Query:**
   ```cypher
-  MATCH (u:User {dontreqpreauth: true}) RETURN u
+  MATCH (u:User {dontreqpreauth: true, enabled: true}) RETURN u
   ```
 
 ---
@@ -137,7 +143,7 @@ nxc ldap 10.10.11.76 -u 'ryan.naylor' -p 'HollowOct31Nyt' --asreproast asrep_has
 ```
 
 ### Case C: From a Domain-Joined Windows Host (Rubeus)
-When operating from a Windows beacon or foothold, **Rubeus** automatically queries LDAP and requests RC4-encrypted `AS-REP` responses:
+When operating from a Windows beacon or foothold, **Rubeus** automatically queries LDAP and requests `AS-REP` responses:
 
 ```powershell
 .\Rubeus.exe asreproast /format:hashcat /nowrap /outfile:asrep_hashes.txt
@@ -147,19 +153,20 @@ When operating from a Windows beacon or foothold, **Rubeus** automatically queri
 
 ## 4. Cracking the AS-REP Hash
 
-The extracted hash follows the `$krb5asrep$23$...` format (where `23` indicates RC4-HMAC encryption, or `18` for AES-256):
+The extracted hash follows the `$krb5asrep$<etype>$...` format:
 
 ```text
 $krb5asrep$23$svc_backup@VOLEUR.HTB:a8c4e72f19b03812...
 ```
 
-We can crack it offline using **Hashcat** (Mode `18200` for `etype 23`) or **John the Ripper**:
+- **If `etype` is `23` (RC4-HMAC):** You can crack it with **Hashcat Mode `18200`** or **John the Ripper** (`--format=krb5asrep`).
+- **If `etype` is `17` (AES-128) or `18` (AES-256):** Note that **Hashcat does not currently have a built-in mode for AES AS-REP hashes** (`-m 18200` only supports `etype 23`). If an account enforces AES and yields `$krb5asrep$18$...`, use **John the Ripper** (`--format=krb5asrep-aes`), which supports AES-128 and AES-256 AS-REP hashes!
 
 ```sh
-# Cracking with Hashcat (Mode 18200 = Kerberos 5, etype 23, AS-REP)
+# Cracking RC4 AS-REP (etype 23) with Hashcat (Mode 18200)
 hashcat -m 18200 asrep_hashes.txt /usr/share/wordlists/rockyou.txt -r /usr/share/hashcat/rules/best64.rule
 
-# Cracking with John the Ripper
+# Cracking RC4 or AES AS-REP (etype 23, 17, or 18) with John the Ripper
 john --wordlist=/usr/share/wordlists/rockyou.txt asrep_hashes.txt
 ```
 
@@ -170,12 +177,18 @@ john --wordlist=/usr/share/wordlists/rockyou.txt asrep_hashes.txt
 What if **no user in the domain** has Kerberos Pre-Authentication disabled?
 If our compromised user (or a group they belong to) has permissive **Access Control List (ACL)** rights over another user object in Active Directory, we can **forcefully disable Pre-Authentication** on that target user, capture their `AS-REP` hash, and then re-enable Pre-Authentication!
 
-## 1. Required ACL Permissions
+## 1. Required ACL Permissions & When to Use It
 
 In BloodHound or DACL enumeration, look for any of the following outbound object control edges from your controlled principal to a target `User`:
 - **`GenericAll`**: Full control over the target user object.
 - **`GenericWrite`**: Permission to write to almost any attribute on the target user object (including `userAccountControl`).
-- **`WriteProperty`** on the `User-Account-Control` attribute (GUID: `bf967a68-0de6-11d0-a285-00aa003049e2`) or on the `Account Restrictions` property set (`4c164200-20c0-11d0-a768-00aa006e0529`).
+- **`WriteProperty`** on the `User-Account-Control` attribute (GUID: `bf967a68-0de6-11d0-a285-00aa003049e2`) or on the `User-Account-Restrictions` property set (GUID: `4c164200-20c0-11d0-a768-00aa006e0529`).
+- **`WriteDacl` / `WriteOwner`**: Allows you to first grant yourself `GenericAll` or `WriteProperty` over the target user (e.g., via `impacket-dacledit` or `impacket-owneredit`) and then modify `userAccountControl`.
+
+> **Pentester Tip: Why use Targeted Roasting instead of `ForceChangePassword` or Shadow Credentials?**
+> 1. **Stealth & Disruption (`ForceChangePassword`):** While `GenericAll` lets you reset a user's password directly, doing so immediately locks the real user out of their account and breaks services running under their credentials. Targeted Roasting is non-destructive and leaves the user's password intact.
+> 2. **Lack of PKINIT (`Shadow Credentials`):** While `GenericWrite` allows writing to `msDS-KeyCredentialLink` (Shadow Credentials), exploiting Shadow Credentials requires the Domain Controller to have a valid certificate for **PKINIT** (`Smart Card Logon`). If the environment lacks AD CS / DC certificates (`KDC_ERR_PADATA_TYPE_NOSUPP`), Shadow Credentials will fail—whereas Targeted AS-REP Roasting and Targeted Kerberoasting work on **every** Active Directory domain!
+> 3. **Recovering the Plaintext Password:** Cracking the hash gives you the user's **plaintext password**, which can be tested for password reuse on SSH, VPNs, web portals, password managers, or local administrator accounts.
 
 ```text
 [Attacker Controlled User] ──(GenericWrite / GenericAll)──> [Target User]
@@ -333,9 +346,19 @@ nxc ldap 10.10.11.76 -u 'ryan.naylor' -p 'HollowOct31Nyt' --kerberoasting tgs_ha
 # Roast a single specific user (Stealthier)
 .\Rubeus.exe kerberoast /user:svc_mssql /format:hashcat /nowrap
 
-# OPSEC Kerberoasting: Use /tgtdeleg to force RC4 encryption or filter out AES-enabled accounts (/rc4opsec)
+# Force RC4 encryption using the GSS-API TGT delegation trick (/tgtdeleg)
+.\Rubeus.exe kerberoast /tgtdeleg /format:hashcat /nowrap
+
+# OPSEC Kerberoasting: Only roast accounts that do NOT support AES (/rc4opsec)
 .\Rubeus.exe kerberoast /rc4opsec /format:hashcat /nowrap
 ```
+
+> **Deep Dive: How Does Encryption Negotiation Work (`RC4` vs `AES`, `/tgtdeleg`, and `/rc4opsec`)?**
+> When the KDC builds a Service Ticket (`TGS-REP.ticket.enc-part`), how does it choose whether to encrypt it with **RC4-HMAC (`etype 23`)** or **AES-256 (`etype 18`)**?
+> 1. **`msDS-SupportedEncryptionTypes` Attribute:** Every account in AD can specify which encryption algorithms it supports in its `msDS-SupportedEncryptionTypes` bitmask. By default, **computer accounts** set this to `28` (`RC4 | AES128 | AES256`), whereas **newly created user accounts** have this attribute **unset (`0` / `NULL`)**.
+> 2. **RC4 Downgrade Behavior:** Historically (prior to the November 2022 Windows Server patch **KB5021131**), if a user-based service account had `msDS-SupportedEncryptionTypes` unset (or did not explicitly check *"This account supports Kerberos AES 128/256 bit encryption"*), and the attacker's `TGS-REQ` requested **only `RC4-HMAC` (`etype 23`)**, the KDC encrypted the returned Service Ticket with **RC4-HMAC**—even if the attacker's TGT used AES!
+> 3. **Why Rubeus Uses `/tgtdeleg`:** By default on Windows, Rubeus uses the OS API (`KerberosRequestorSecurityToken`) to request service tickets. However, modern Windows automatically advertises AES support in API-generated `TGS-REQ` packets. The **`/tgtdeleg`** flag abuses the Kerberos GSS-API (`GSS_C_DELEG_FLAG`) to trick Windows into handing Rubeus a usable copy of the current user's **raw TGT and session key** from memory *without touching LSASS*. With that raw TGT, Rubeus crafts its own raw `TGS-REQ` packet specifying **only `etype 23` (RC4)**!
+> 4. **Why Blue Teams Catch `/tgtdeleg` (and How `/rc4opsec` Helps):** Requesting RC4 (`0x17`) in an environment that uses AES (`0x12`) creates an obvious anomaly in Event ID `4769`. When you use **`/rc4opsec`**, Rubeus queries LDAP first, filters out any account where `msDS-SupportedEncryptionTypes` has AES enabled, and only requests RC4 tickets for accounts that natively default to RC4.
 
 ---
 
@@ -346,8 +369,8 @@ Depending on the encryption types supported by the KDC and the service account (
 | Encryption Type | Hash Prefix | Hashcat Mode | Cracking Speed |
 | :--- | :--- | :--- | :--- |
 | **RC4-HMAC** (`0x17` / `23`) | `$krb5tgs$23$*...` | **`-m 13100`** | Very Fast (NTLM-based) |
-| **AES-128-CTS-HMAC-SHA1-96** (`0x11` / `17`) | `$krb5tgs$17$...` | **`-m 19600`** | Slow (PBKDF2-based) |
-| **AES-256-CTS-HMAC-SHA1-96** (`0x12` / `18`) | `$krb5tgs$18$...` | **`-m 19700`** | Very Slow (PBKDF2-based) |
+| **AES-128-CTS-HMAC-SHA1-96** (`0x11` / `17`) | `$krb5tgs$17$...` | **`-m 19600`** | Slow (PBKDF2-HMAC-SHA1, 4096 iterations) |
+| **AES-256-CTS-HMAC-SHA1-96** (`0x12` / `18`) | `$krb5tgs$18$...` | **`-m 19700`** | Very Slow (PBKDF2-HMAC-SHA1, 4096 iterations) |
 
 ```sh
 # Cracking RC4-HMAC TGS ticket (etype 23)
@@ -375,6 +398,10 @@ Look for any of these outbound permissions over a target `User`:
 - **`GenericAll`**
 - **`GenericWrite`**
 - **`WriteProperty`** on `servicePrincipalName` (GUID: `f3a64788-5306-11d1-a9c5-0000f80367c1`) or on the `Public-Information` property set (`e48d0154-bcf8-11d1-8702-00c04fb96050`).
+- **`WriteDacl` / `WriteOwner`** (which can be abused to grant yourself `GenericAll` or `WriteProperty` first).
+
+> **Note on SPN Uniqueness (`LDAP_CONSTRAINT_VIOLATION`):**
+> Active Directory enforces that every `servicePrincipalName` must be **globally unique** across the entire forest. If you try to set an SPN that already belongs to another user or computer account, the Domain Controller will reject the modification with `LDAP_CONSTRAINT_VIOLATION`. Always use a unique/random SPN string (e.g., `http/ roastme123.voleur.htb`).
 
 ```text
 [Attacker Controlled User] ──(GenericWrite / WriteSPN)──> [Target Admin User (No SPN)]
@@ -448,17 +475,19 @@ Normally, when a client sends an `AS-REQ` to get a TGT, the `req-body` contains 
 ```text
 Standard AS-REQ:
   cname: guest_nopreauth
-  sname: krbtgt/VOLEUR.HTB   <-- KDC encrypts returned ticket with krbtgt's key
+  sname: krbtgt/VOLEUR.HTB   <-- KDC encrypts AS-REP.ticket with krbtgt's key
 
 Manipulated AS-REQ (Kerberoasting without Credentials):
   cname: guest_nopreauth     <-- Has UF_DONT_REQUIRE_PREAUTH enabled (No password needed!)
-  sname: MSSQLSvc/sql01.voleur.htb:1433  <-- Target SPN!
+  sname: MSSQLSvc/sql01.voleur.htb:1433  <-- Target SPN! KDC encrypts AS-REP.ticket with Service Account's key!
 ```
 
 What happens when we set **`cname`** to an account that has `UF_DONT_REQUIRE_PREAUTH` enabled, and replace **`sname`** with a target service's **SPN** (instead of `krbtgt/DOMAIN`)?
 1. The KDC checks `cname` (`guest_nopreauth`) and sees that Pre-Authentication is **not required**, so it does not ask for an encrypted timestamp (`PA-ENC-TIMESTAMP`).
-2. Next, the KDC looks at `sname` (`MSSQLSvc/sql01.voleur.htb:1433`). Instead of issuing a TGT encrypted with `krbtgt`'s key, the KDC directly issues a **Service Ticket encrypted with the target SPN account's key** inside the `AS-REP`!
-3. Even if `guest_nopreauth` has an uncrackable 64-character password, we don't care about `guest_nopreauth`'s password anymore—we extract the **`ticket` portion of the `AS-REP`**, which is encrypted with the target SPN account's key, and crack the service account's password offline!
+2. Next, the KDC looks at `sname` (`MSSQLSvc/sql01.voleur.htb:1433`). Instead of issuing a TGT encrypted with `krbtgt`'s key, the KDC directly issues a **Service Ticket encrypted with the target SPN account's key** inside the `AS-REP.ticket.enc-part` field!
+3. Even if `guest_nopreauth` has an uncrackable 64-character password, we don't care about `guest_nopreauth`'s password anymore:
+   - In **AS-REP Roasting**, we extract `AS-REP.enc-part` (encrypted with `cname`'s key).
+   - In **Unauthenticated Kerberoasting**, we extract `AS-REP.ticket.enc-part` (encrypted with `sname`'s key)! Because `AS-REP.ticket.enc-part` has the exact same ASN.1 `EncTicketPart` structure as `TGS-REP.ticket.enc-part`, our tools format it as a standard `$krb5tgs$` hash so we can crack the service account's password offline!
 
 > **Why is this huge during a pentest?**
 > Sometimes you find an AS-REP roastable account (`UF_DONT_REQUIRE_PREAUTH`), you dump its AS-REP hash, and **it fails to crack** because that specific account has a strong password. Instead of giving up, you can use that uncracked account as a stepping stone (`-no-preauth`) to roast every SPN in the domain without credentials!
@@ -479,7 +508,7 @@ Suppose we discovered that the user `mark` has `UF_DONT_REQUIRE_PREAUTH` enabled
 
 ```sh
 # Use 'mark' (-no-preauth) + a list of potential service account usernames (-usersfile)
-impacket-GetUserSPNs -no-preauth 'mark' -usersfile users.txt -dc-host 10.10.11.76 voleur.htb/ -outputfile nopreauth_tgs.txt
+impacket-GetUserSPNs -no-preauth 'mark' -usersfile users.txt -dc-ip 10.10.11.76 voleur.htb/ -outputfile nopreauth_tgs.txt
 ```
 
 **From Windows (Using Rubeus):**
